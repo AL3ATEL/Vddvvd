@@ -1,0 +1,203 @@
+console.log("🚀 Starting permanent room monitor with Formspree...");
+
+// 🔥 Settings - Change only here!
+const TARGET_ROOMS = ['49R1Q8', '49UTMU'];
+const YOUR_EMAIL = 'Kaled511g511w@gmail.com';
+const FORMSPREE_URL = 'https://formspree.io/f/xkgqrdlo';
+
+// Variable to ensure notification is sent only once
+let initialNotificationSent = false;
+
+console.log("🎯 System is monitoring rooms:", TARGET_ROOMS);
+console.log("📧 Notifications sent to:", YOUR_EMAIL);
+console.log("🔗 Formspree:", FORMSPREE_URL);
+console.log("⏰ Started at:", new Date().toLocaleString());
+
+// 🔥 Fetch function with timeout
+async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+    }
+}
+
+// 🔥 Function to fetch room data with retry using AllOrigins
+async function fetchRoomsWithRetry(maxRetries = 3) {
+    const targetUrl = 'https://gartic.io/req/list?language[]=19';
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🔄 Attempt ${attempt}/${maxRetries}`);
+            
+            const response = await fetchWithTimeout(proxyUrl, {}, 15000);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const rooms = await response.json();
+            
+            if (!Array.isArray(rooms)) {
+                throw new Error('Data is not an array');
+            }
+            
+            console.log(`✅ Data retrieved - ${rooms.length} rooms`);
+            return rooms;
+            
+        } catch (error) {
+            console.log(`❌ Attempt ${attempt} failed: ${error.message}`);
+            
+            if (attempt < maxRetries) {
+                const waitTime = attempt * 2;
+                console.log(`⏳ Waiting ${waitTime} seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+            }
+        }
+    }
+    
+    throw new Error('All attempts failed');
+}
+
+async function checkRooms() {
+    try {
+        console.log("\n🔍 Checking API...", new Date().toLocaleTimeString());
+
+        const rooms = await fetchRoomsWithRetry(3);
+        console.log(`📊 Available rooms count: ${rooms.length}`);
+
+        // 🔥 Advanced search mechanism
+        const availableRooms = [];
+
+        TARGET_ROOMS.forEach(targetRoom => {
+            const foundRoom = rooms.find(room => {
+                if (!room || !room.code) return false;
+                return room.code.toUpperCase() === targetRoom.toUpperCase() && room.quant > 0;
+            });
+
+            if (foundRoom) {
+                availableRooms.push({
+                    code: foundRoom.code,
+                    players: foundRoom.quant,
+                    maxPlayers: foundRoom.max
+                });
+                console.log(`✅ Room ${targetRoom} is now available - ${foundRoom.quant}/${foundRoom.max} players`);
+            } else {
+                console.log(`❌ Room ${targetRoom} is not available`);
+            }
+        });
+
+        // Send notification only once if rooms are available
+        if (availableRooms.length > 0 && !initialNotificationSent) {
+            console.log('🎉 Sending room availability notification via Formspree...');
+            await sendFormspreeNotification(availableRooms);
+            initialNotificationSent = true;
+        } else if (availableRooms.length > 0) {
+            console.log('📝 Rooms available but notification already sent');
+        }
+
+        // Statistics
+        console.log(`📈 Available rooms: ${availableRooms.length}/${TARGET_ROOMS.length}`);
+
+        // 🔥 Print first 3 rooms for debugging
+        if (rooms.length > 0) {
+            console.log("🔎 First 3 rooms in the list:");
+            rooms.slice(0, 3).forEach((room, index) => {
+                console.log(`   ${index + 1}. ${room.code} - ${room.quant}/${room.max}`);
+            });
+        }
+
+    } catch (error) {
+        console.log('⚠️ Check error:', error.message);
+        console.log('💡 Will retry in the next cycle');
+    }
+}
+
+async function sendFormspreeNotification(availableRooms) {
+    try {
+        const roomList = availableRooms.map(room => 
+            `🎯 ${room.code} - 👥 ${room.players}/${room.maxPlayers} players\n🔗 https://gartic.io/${room.code}`
+        ).join('\n\n');
+
+        const formData = new FormData();
+        formData.append('_replyto', YOUR_EMAIL);
+        formData.append('_subject', `🎯 ${availableRooms.length} Gartic room(s) available! - NKEL System`);
+        formData.append('email', YOUR_EMAIL);
+        formData.append('message', 
+            `Hello!
+
+🛰️ NKEL WHOWHERE V3 System
+The following rooms are currently available:
+
+${roomList}
+
+⏰ Discovery time: ${new Date().toLocaleString()}
+
+⚡ **You can join now!**
+
+🔄 **Note:** This is a one-time notification. The system will continue monitoring.
+
+Best regards,
+NKEL Monitoring System`
+        );
+
+        const response = await fetchWithTimeout(FORMSPREE_URL, {
+            method: 'POST',
+            body: formData
+        }, 15000);
+
+        if (response.ok) {
+            console.log('✅ Notification sent successfully via Formspree!');
+            console.log('📧 Sent to:', YOUR_EMAIL);
+            console.log('🔍 Rooms:', availableRooms.map(r => r.code));
+        } else {
+            console.log('❌ Formspree responded with error:', response.status);
+        }
+
+    } catch (error) {
+        console.log('❌ Error sending via Formspree:', error.message);
+
+        // 🔥 Fallback: Console notification
+        console.log('\n🎯 ===== System Notification =====');
+        console.log('📧 Would have sent to:', YOUR_EMAIL);
+        console.log('📝 Rooms:', availableRooms.map(r => r.code));
+        console.log('🔗 Links:', availableRooms.map(r => `https://gartic.io/${r.code}`));
+        console.log('🎯 ============================\n');
+    }
+}
+
+// 🔥 Permanent monitoring system
+function startPermanentMonitoring() {
+    console.log('🛰️ Activating permanent system...');
+    console.log('⏰ Will check every 30 seconds 24/7');
+    console.log('📧 Will send one notification only via Formspree');
+    console.log('🔄 Retry system enabled (3 attempts per check)');
+
+    // Check every 30 seconds
+    setInterval(checkRooms, 30000);
+
+    // Initial immediate check
+    checkRooms();
+}
+
+// Start running
+startPermanentMonitoring();
+
+// Error handling to prevent shutdown
+process.on('uncaughtException', (error) => {
+    console.log('🛡️ Unexpected error, continuing operation:', error.message);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.log('🛡️ Unhandled rejection, continuing operation:', error.message);
+});
