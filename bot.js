@@ -1,8 +1,14 @@
 const TelegramBot = require('node-telegram-bot-api');
 
-// التوكن الخاص بك
-const token = process.env.BOT_TOKEN || '8220823694:AAFlNjmbPryjRhyHTF9ue8ykiOJmWNEorY0'; 
+// التوكن من environment variable
+const token = process.env.BOT_TOKEN;
+if (!token) {
+    console.error('❌ BOT_TOKEN is required!');
+    process.exit(1);
+}
+
 const bot = new TelegramBot(token, { polling: true });
+
 // تخزين بيانات المستخدمين
 const userData = new Map();
 
